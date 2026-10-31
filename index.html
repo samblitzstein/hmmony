@@ -1,4 +1,7 @@
-<!doctype html><html><head><meta charset=utf8><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Hmmony"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Hmmony"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}#hearchk{position:fixed;inset:0;z-index:99999;background:#f6f1e7f2;display:flex;align-items:center;justify-content:center;padding:16px;font:16px -apple-system,BlinkMacSystemFont,sans-serif;color:#2a2418}
+#hearchk>div{max-width:320px;background:#fffdf7;border:1px solid #c9b88e;border-radius:12px;padding:16px;line-height:1.4}#hearchk b{font-size:1.2rem}
+#hearchk button{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #8a7550;background:#fff;color:#2a2418;margin:2px 0}#hearchk .sm{font-size:.85rem;color:#6b5a44}
+</style></head><body>
 <title>Hmmony</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <style>
@@ -3467,12 +3470,30 @@ window.HM=(function(){
   }
   window.addEventListener('pointerup',dragEnd); svg.addEventListener('pointerdown',ev=>{ if(st){ st.touchT=performance.now(); st.ptrDown=true; st.lastAt=svgPt(ev); poke(); } });
   ['pointerup','pointercancel'].forEach(t=>window.addEventListener(t,()=>{ if(st&&st.ptrDown){ st.ptrDown=false; st.liftT=performance.now(); } })); window.addEventListener('pointercancel',dragEnd);
-  function wake(){ if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return false;}} if(ctx.state!=='running'){ ctx.resume();
+  // the iPhone silent switch mutes Web Audio unless the page plays as media: ask for 'playback' (iOS 17+) and, for older iOS,
+  // keep a silent <audio> tag looping (red-team row 7, Oct 30)
+  let hushTag=null;
+  function mediaSession(){ try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
+    try{ if(!hushTag){ const n=800,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i));};
+        w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+        let bin=''; new Uint8Array(b).forEach(x=>{bin+=String.fromCharCode(x);}); hushTag=new Audio('data:audio/wav;base64,'+btoa(bin)); hushTag.loop=true; hushTag.setAttribute('playsinline',''); }
+      hushTag.play().catch(()=>{}); }catch(e){} }
+  function wake(){ mediaSession(); if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return false;}} if(ctx.state!=='running'){ ctx.resume();
       try{ const s=ctx.createBufferSource(); s.buffer=ctx.createBuffer(1,1,ctx.sampleRate); s.connect(ctx.destination); s.start(0); }catch(e){} }   // a silent blip unlocks sound on iPhones
     return true; }
   // Sound starts with your first touch anywhere on the page, not only the gate. On phones the browser only allows sound once
   // a finger lifts, so a note played the moment your finger goes down waits for that and then plays (a tap sounds normal).
   ['pointerdown','pointerup','touchend','click','keydown'].forEach(t=>window.addEventListener(t,()=>{ if(!ctx||ctx.state!=='running') wake(); },{capture:true,passive:true}));
+  // sound check before play (red-team row 7): testers on a muted phone would otherwise play by sight and not know. Once per device.
+  (function(){ let seen=false; try{ seen=localStorage.getItem('hmmony.heard')==='1'; }catch(e){} if(seen) return;
+    const o=document.createElement('div'); o.id='hearchk';
+    o.innerHTML='<div><b>Can you hear this?</b><p>Hmmony is played by ear.</p><p><button id="hearPlay">\u266a Play a tone</button> <button id="hearYes">Yes, I hear it</button></p><p class="sm">No sound? Turn the volume up. On an iPhone, also flip the silent switch, then play it again.</p></div>';
+    document.body.appendChild(o);
+    o.querySelector('#hearPlay').onclick=()=>{ if(!wake()) return; [67,71,74,79].forEach((m,i)=>{ const t0=ctx.currentTime+i*0.18, g=ctx.createGain(), os=ctx.createOscillator();
+      os.type='sine'; os.frequency.value=440*Math.pow(2,(m-69)/12); g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(.2,t0+.02); g.gain.exponentialRampToValueAtTime(.001,t0+1.2);
+      os.connect(g); g.connect(ctx.destination); os.start(t0); os.stop(t0+1.3); }); window.__plog&&window.__plog('soundcheck',{play:1}); };
+    o.querySelector('#hearYes').onclick=()=>{ wake(); try{ localStorage.setItem('hmmony.heard','1'); }catch(e){} window.__plog&&window.__plog('soundcheck',{heard:1}); o.remove(); };
+  })();
 
   // ---------- design switches ----------
   // hidden for testers: tap the title five times within three seconds (or open the link with #debug) to show or hide
